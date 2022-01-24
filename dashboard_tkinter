@@ -1,0 +1,760 @@
+## DASHBOARD APP ##
+
+import tkinter as tk
+from tkinter import *
+import tkinter.font as font
+from tkinter import ttk
+from tkinter.ttk import *
+import pandas as pd
+from datetime import date
+import pyodbc
+from tabulate import tabulate
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+from numpy import radians, cos, sin
+from plotly import graph_objs as go
+from PIL import ImageTk, Image
+from matplotlib.pyplot import Figure
+import webbrowser
+from webbrowser import open as openlink
+from tkinter import messagebox
+
+
+#configuring the Tkinter layout
+#each graph has its own frame which can be switched
+
+def raise_frame(frame):
+    frame.tkraise()
+
+today = date.today()
+root = Tk()
+s = Style()
+s.configure('My.TFrame', background='white')
+
+root.columnconfigure(0, weight=1)
+root.rowconfigure(0, weight=1)
+root.title("TDW Dashboard App")
+font.nametofont("TkDefaultFont").configure(size=10)
+
+main = tk.Frame(root)
+main.grid()
+f0 = Frame(main)
+f0.grid(column=0, row=0, sticky="ew", padx=10, pady=10)
+f1 = Frame(main)
+f2 = Frame(main)
+f3 = Frame(main)
+f4 = Frame(main)
+f5 = Frame(main)
+f99 = Frame(main)
+
+for frame in (f1, f2, f3, f4, f5, f99):
+    frame.grid(row=4, column=0, sticky='nw')
+
+F1_button = ttk.Button(f0, text="Start Page", command=lambda:raise_frame(f1))
+F1_button.grid(column=0, row=0, sticky="ew", padx=10, pady=10)
+    
+F2_button = ttk.Button(f0, text="Values Table", command=lambda:raise_frame(f2))
+F2_button.grid(column=1, row=0, sticky="ew", padx=10, pady=10)
+
+F3_button = ttk.Button(f0, text="Pie Chart", command=lambda:raise_frame(f3))
+F3_button.grid(column=2, row=0, sticky="ew", padx=10, pady=10)
+
+F4_button = ttk.Button(f0, text="Gauge Chart", command=lambda:raise_frame(f4))
+F4_button.grid(column=3, row=0, sticky="ew", padx=10, pady=10)
+
+F5_button = ttk.Button(f0, text="Bar Chart", command=lambda:raise_frame(f5))
+F5_button.grid(column=4, row=0, sticky="ew", padx=10, pady=10)
+
+F99_button = ttk.Button(f0, text="Guide", command=lambda:raise_frame(f99))
+F99_button.grid(column=5, row=0, sticky="ew", padx=10, pady=10)
+
+F1_label = tk.Label(f1, text="FRAME 1:")
+F2_label = tk.Label(f2, text="FRAME 2:")
+F3_label = tk.Label(f3, text="FRAME 3:")
+F4_label = tk.Label(f4, text="FRAME 4:")
+F5_label = tk.Label(f5, text="FRAME 5:")
+F99_label = tk.Label(f99, text="FRAME 99:")
+
+ttk.Separator(main,orient=HORIZONTAL).grid(row=3, columnspan=6,sticky="ew")
+F1_label.grid(column=0, columnspan = 8,row=4, sticky="w", padx=10, pady=10)
+F2_label.grid(column=0, columnspan = 8,row=4, sticky="w", padx=10, pady=10)
+F3_label.grid(column=0, columnspan = 8,row=4, sticky="w", padx=10, pady=10)
+F4_label.grid(column=0, columnspan = 8,row=4, sticky="w", padx=10, pady=10)
+F5_label.grid(column=0, columnspan = 8,row=4, sticky="w", padx=10, pady=10)
+F99_label.grid(column=0, columnspan = 8,row=4, sticky="w", padx=10, pady=10)
+
+raise_frame(f1)
+
+#connection to SQL server. Not that here and below SQL queries will not be shown in full. Data is hidden by *****.
+conn = pyodbc.connect('Driver={SQL Server};'
+                      'Server=*****'
+                      'Database=*****;'
+                      'Trusted_Connection=yes;')
+
+#getting dates for drop-down selection:
+db_query_dates = '''SELECT DISTINCT StoreDate 
+FROM ***
+ORDER BY StoreDate DESC'''
+
+conn_query_dates = pd.read_sql_query(db_query_dates, conn)
+df_dates = pd.DataFrame(conn_query_dates)
+
+
+def getDate():
+    """
+    Function to obtain the date values
+    """
+    global dateValue, dateExt, cur_period
+    dateValue, dateExt = '',''
+    dateValue = date_select.get()
+    dateExt = f" WHERE StoreDate = '{dateValue}'"
+    
+    cur_date = pd.to_datetime(date_select.get()).month_name()[:3]
+    cur_year = str(pd.to_datetime(date_select.get()).year)[2:]
+    
+    cur_period = cur_date+'-'+cur_year
+    return dateValue, dateExt, cur_period
+
+def runQuery_display_01():
+    """
+    Function that creates a main dataframe which can be used across 
+    all graphs. After the dataframe generated, preview first 10 rows.
+    """
+    global df_history_SSDH
+    getDate()
+    db_query_SSDH = "SELECT * FROM ***" + dateExt
+    SQL_Query_display = pd.read_sql_query(db_query_SSDH, conn)
+    df_history_SSDH = pd.DataFrame(SQL_Query_display)
+    NOTE.set('''Report generated! Please use the tabs above to get the required data or
+    press "Copy All" to copy everything to MS Excel File in background''')
+    res_value_01.set(tabulate(df_history_SSDH.head(10), 
+                           headers = df_history_SSDH.columns.values, 
+                           tablefmt = 'psql', showindex=False))
+    return df_history_SSDH
+
+def saveReport():
+    """
+    Function for saving the main dataframe as Excel file
+    """
+    writer = pd.ExcelWriter(f"StockSegmentDetailsHistory_{today}.xlsx", engine="xlsxwriter")
+    temp_df = df_history_SSDH.copy()
+    temp_df.drop(temp_df.columns[0], axis=1, inplace=True)
+    temp_df.to_excel(writer, sheet_name='Report', index=False)
+    workbook  = writer.book
+    worksheet = writer.sheets['Report']
+    #Adds Excel autofilter
+    (max_row, max_col) = temp_df.shape
+    worksheet.autofilter(0, 0, max_row, max_col - 1)
+    writer.save()
+
+
+f1 = ttk.Frame(main, padding=(10,10))
+mainframe = ttk.Frame(f1, width=200, height=100)
+f1.grid(column=0, row=4,sticky="news")
+mainframe.grid(column=0, row=0, columnspan=2, rowspan=3)
+
+date_select = tk.StringVar()
+date_select.set(df_dates['StoreDate'].max()) # default value
+OPTIONS = df_dates['StoreDate']
+dateValue, dateExt = '',''
+dateValue = tk.StringVar()
+NOTE = tk.StringVar()
+res_value_01 = tk.StringVar(value='''The preview will be shown below
+(just to show that everything works!)''')
+header_01 = tk.StringVar(value="Start Page")
+note_01 = ttk.Label(f1, textvariable=header_01)
+note_01.config(font=("Segoe UI", 11, 'bold'))
+note_01.grid(column=0, columnspan = 8, row=0, sticky="w", padx=5, pady=5)
+
+panel_buttons_f1 = ttk.Frame(f1)
+panel_buttons_f1.grid(row=2, column=0, sticky="ew")
+
+date_dropdown = ttk.OptionMenu(panel_buttons_f1, date_select, *OPTIONS)
+date_dropdown.grid(column=1, row=0, sticky=(W, E), padx=(20, 20))
+date_dropdown.focus()
+ttk.Label(panel_buttons_f1, text="Select Date:").grid(column=0, row=0, sticky=W, padx=(20, 20))
+ttk.Button(panel_buttons_f1, text="Run query", command=runQuery_display_01).grid(
+    column=0, row=2, sticky=(W, E), columnspan=1, padx=(20, 20))
+
+ttk.Button(panel_buttons_f1, text="Save Excel File", command=saveReport).grid(
+    column=1, row=2, sticky=(W, E), columnspan=1, padx=(20, 20))
+
+panel_result_f1 = ttk.Frame(f1)
+panel_result_f1.grid(row=4, column=0, sticky="ew")
+
+res_display_01 = ttk.Label(panel_result_f1, textvariable=res_value_01)
+res_display_01.config(font=("Courier", 9))
+res_display_01.grid(column=0, row=0, columnspan=8, sticky="ew", padx=5, pady=5)
+
+
+## Values Table ##
+def createPivot(dataframe):
+    """
+    Function to create a pivot table from the main dataframe.
+    Certain pivot report values will be used in graphs.
+    """    
+    global excessive_total, excessive_opportunity, deferred, std_equipment, blocked_total
+    excessive_total, excessive_opportunity, deferred, std_equipment, blocked_total = 0,0,0,0,0
+
+    df_pivot = dataframe.pivot_table(index=['Final','Materials Team Categorie 1'],
+                        values=['Stock Value($)'],
+                        columns=['Segment'],
+                        aggfunc={'Stock Value($)': 'sum'},
+                        margins = True, fill_value=0
+    )
+    df_pivot.columns = ['Blocked', 
+     'Capex', 'Discrep', 'Disposal', 
+     'Excessive', 'FF', 'Contractors', 
+     'MinMax', 'Opex', 'Repair', 'All']
+    
+    #setting multiple categorical variables
+    capex_total = df_pivot['Capex'][-1].round(decimals=2)
+    ff_total = df_pivot['FF'][-1].round(decimals=2)
+    opex_total = df_pivot['Opex'][-1].round(decimals=2)
+    minmax_total = df_pivot['MinMax'][-1].round(decimals=2)
+    chemicals = df_pivot.loc['Chemical']['Excessive'].sum().round(decimals=2)
+    octg = df_pivot.loc['OCTG']['Excessive'].sum().round(decimals=2)
+    tml = df_pivot.loc['TML']['Excessive'].sum().round(decimals=2)
+    excessive_opportunity = df_pivot.loc['Excessive']['Excessive'].sum().round(decimals=2)
+    blocked_total = df_pivot['Blocked'][-1].round(decimals=2)
+    discrep_total = df_pivot['Discrep'][-1].round(decimals=2)
+    repair_total = df_pivot['Repair'][-1].round(decimals=2)
+    quarantine = (blocked_total + discrep_total + repair_total).round(decimals=2)
+    deferred = df_pivot.loc['Deferred']['Excessive'].sum().round(decimals=2)
+    disposal_total = df_pivot['Disposal'][-1].round(decimals=2) 
+    excessive_total = df_pivot['Excessive'][-1].round(decimals=2)
+    contractors_total = df_pivot['Contractors'][-1].round(decimals=2)
+    std_equipment = (excessive_total - (excessive_opportunity + deferred)).round(decimals=2)
+    total = df_pivot['All'][-1].round(decimals=2)
+    operating_stock = (capex_total + opex_total + std_equipment + excessive_opportunity + minmax_total + ff_total + quarantine).round(decimals=2)
+    
+    #This array will be used for formatted comparison table creation. Values shown in millions.
+    global presentation
+    presentation = [['', cur_period],
+            ['OPERATING STOCK', (operating_stock/1000000).round(decimals=2)],
+            ['including:', ''],
+            ['Standard well equipment \nassigned to future wells in SAP:', ((capex_total + opex_total)/1000000).round(decimals=2)],
+            ['  - assigned to wells (WBS)', (capex_total/1000000).round(decimals=2)],
+            ['  - FF stock', (ff_total/1000000).round(decimals=2)],
+            ['  - Opex', (opex_total/1000000).round(decimals=2)],
+            ['Safety Inventory / Replenishment Levels', (minmax_total/1000000).round(decimals=2)],
+            ['Standard well equipment to be used on future wells \nbut not assigned to wells in SAP:', 
+             (std_equipment/1000000).round(decimals=2)],
+            ['  - chemicals', (chemicals/1000000).round(decimals=2)],
+            ['  - OCTG', (octg/1000000).round(decimals=2)],
+            ['  - standart equipment for future wells', (tml/1000000).round(decimals=2)],
+            ['Not assigned for future wells – opportunity', (excessive_opportunity/1000000).round(decimals=2)],
+            ['Blocked Quarantine items', (quarantine/1000000).round(decimals=2)],
+            ['  - Blocked Stock (e.g. prepared for repairing, \nor will be transferred to Disposal)', 
+             (blocked_total/1000000).round(decimals=2)],
+            ['  - Vendor (repairing)', (repair_total/1000000).round(decimals=2)],
+            ['  - Discrep', (discrep_total/1000000).round(decimals=2)],
+            ['NON-OPERATING STOCK', ((deferred + disposal_total + contractors_total)/1000000).round(decimals=2)],
+            ['including:', ''],
+            ['  - Smart equipment', (deferred/1000000).round(decimals=2)],
+            ['  - Submitted for Disposal', (disposal_total/1000000).round(decimals=2)],
+            ['  - Handed over to Contractors', (contractors_total/1000000).round(decimals=2)]]
+
+    global df
+    df = pd.DataFrame(presentation[1:], columns=presentation[0])
+    return df, presentation, excessive_total, excessive_opportunity, deferred, std_equipment, blocked_total
+
+def run_TableMain():
+    """
+    Function to create a table view of the main stock category values.
+    """   
+    global temp_presentation
+    temp_presentation = []
+    createPivot(df_history_SSDH)
+
+    r = 3
+    for i in presentation:
+        if r == 4 or r == 20:
+            Label(panel_result_f2, text=i[0], font=("Helvetica", 11, 'bold'), background='white').grid(
+                row=r, column=0, sticky="W", padx=(20, 20), pady=(0, 3))
+            Label(panel_result_f2, text=i[1],font=("Helvetica", 11, 'bold'), background='white').grid(
+                row=r, column=1, sticky="W", padx=(20, 20), pady=(0, 3))
+        else:
+            Label(panel_result_f2, text=i[0],font=("Helvetica", 10), background='white').grid(
+                row=r, column=0, sticky="W", padx=(20, 20), pady=(0, 3))
+            Label(panel_result_f2, text=i[1],font=("Helvetica", 10), background='white').grid(
+                row=r, column=1, sticky="W", padx=(20, 20), pady=(0, 3))        
+        r += 1
+    temp_presentation = presentation
+    return temp_presentation
+
+def run_TableCompare():
+    """
+    Function to create a second table to compare.
+    """
+    global presentation
+    presentation = []
+    runQueryCompare()
+    createPivot(df_history_compare)
+
+    r = 3
+    for i in presentation:
+        if r == 4 or r == 20:
+            Label(panel_result_f2, text=i[1],font=("Helvetica", 11, 'bold'), background='white').grid(
+                row=r, column=2, sticky="W", padx=(20, 20), pady=(0, 3))
+        else:
+            Label(panel_result_f2, text=i[1],font=("Helvetica", 10), background='white').grid(
+                row=r, column=2, sticky="W", padx=(20, 20), pady=(0, 3))        
+        r += 1
+
+def getDateCompare():
+    """
+    Function to get the date for comparison.
+    """
+    global dateValue_compare, dateExt_compare, cur_period
+    dateValue_compare, dateExt_compare, cur_period = '','', ''
+    dateValue_compare = date_select_compare.get()
+    dateExt_compare = f" WHERE StoreDate = '{dateValue_compare}'"
+    cur_date_compare = pd.to_datetime(date_select_compare.get()).month_name()[:3]
+    cur_year_compare = str(pd.to_datetime(date_select_compare.get()).year)[2:]
+    cur_period = cur_date_compare+'-'+cur_year_compare
+    return dateValue_compare, dateExt_compare, cur_period
+
+def runQueryCompare():
+    """
+    Function to display both table: main and comparison.
+    """
+    global df_history_compare
+    getDateCompare()
+    df_history_compare = "SELECT * FROM [MMDB].[TDW].[StockSegmentDetailsHistory]" + dateExt_compare
+    SQL_Query_display_compare = pd.read_sql_query(df_history_compare, conn)
+    df_history_compare = pd.DataFrame(SQL_Query_display_compare)
+    return df_history_compare
+
+def run_Indicators():
+    """
+    Places arrow indicators to show current values are larger or smaller than the comparison.
+    """
+    global df_final
+    df_temp1 = pd.DataFrame(temp_presentation)
+    df_temp2 = pd.DataFrame(presentation)
+    df_final = pd.concat([df_temp1.reset_index(drop=True),df_temp2.reset_index(drop=True)], axis=1)
+    df_final = df_final.drop(df_final.columns[[2]], axis=1)
+    
+    r = 4
+    for row in df_final.iloc[1:].itertuples():
+        
+        if (row[1]>row[2]):
+            Label(panel_result_f2, text="\u25B2",font=("Helvetica", 10), background='white').grid(
+                row=r, column=3, sticky="W", padx=(20, 20), pady=(0, 3)) 
+        if (row[1]<row[2]):
+            Label(panel_result_f2, text="\u25BC",font=("Helvetica", 10), background='white').grid(
+                row=r, column=3, sticky="W", padx=(20, 20), pady=(0, 3)) 
+        if (row[1]==row[2]):
+            Label(panel_result_f2, text="",font=("Helvetica", 10), background='white').grid(
+                row=r, column=3, sticky="W", padx=(20, 20), pady=(0, 3))
+        r += 1
+    return df_final
+
+#the following two functions just copy the comparison tables to buffer so that can be put into Excel
+def copyMain():
+    df_copy_main = pd.DataFrame(temp_presentation)
+    df_copy_main.columns = ['','']
+    df_copy_main.to_clipboard(index=False)
+
+def copyAll():
+    df_copy_main = pd.DataFrame(temp_presentation)
+    df_copy_main[dateValue_compare] = pd.DataFrame(presentation)[1]
+    df_copy_all=df_copy_main
+    df_copy_all.columns = ['','','']
+    df_copy_all.to_clipboard(index=False)
+        
+
+f2 = ttk.Frame(main, padding=(10,10))
+mainframe = ttk.Frame(f2, width=200, height=100)
+f2.grid(column=0, row=4,sticky="news")
+mainframe.grid(column=0, row=0, columnspan=2, rowspan=3)
+
+NOTE = tk.StringVar()
+res_value_02_main = tk.StringVar(value='''The preview will be shown below''')
+res_value_02_compare = tk.StringVar(value='''BLANK''')
+header_02 = tk.StringVar(value="Table View Page")
+
+date_select_compare = tk.StringVar()
+date_select_compare.set(df_dates['StoreDate'].max()) # default value
+OPTIONS_compare = df_dates['StoreDate']
+dateValue_compare, dateExt_compare = '',''
+dateValue_compare = tk.StringVar()
+
+note_01 = ttk.Label(f2, textvariable=header_02)
+note_01.config(font=("Segoe UI", 11, 'bold'))
+note_01.grid(column=0, columnspan = 8, row=0, sticky="w", padx=5, pady=5)
+
+panel_buttons_f2 = ttk.Frame(f2)
+panel_buttons_f2.grid(row=2, column=0, sticky="ew")
+ttk.Button(panel_buttons_f2, text="Main Table", command=run_TableMain).grid(
+    column=0, row=2, sticky="ew", columnspan=1, padx=(20, 20))
+
+date_dropdown_compare = ttk.OptionMenu(panel_buttons_f2, date_select_compare, *OPTIONS_compare)
+date_dropdown_compare.grid(column=5, row=2, sticky="ew")
+date_dropdown_compare.focus()
+ttk.Label(panel_buttons_f2, text="Date to Compare:").grid(column=4, row=2, sticky="w")
+ttk.Button(panel_buttons_f2, text="Compare View", command=run_TableCompare).grid(
+    column=6, row=2, sticky="ew", columnspan=1, padx=(20, 20))
+ttk.Button(panel_buttons_f2, text="Indicators", command=run_Indicators).grid(
+    column=7, row=2, sticky="ew", columnspan=1, padx=(20, 20))
+
+ttk.Button(panel_buttons_f2, text="Copy Main", command=copyMain).grid(
+    column=8, row=2, sticky="ew", columnspan=1, padx=(10, 10))
+ttk.Button(panel_buttons_f2, text="Copy All", command=copyAll).grid(
+    column=9, row=2, sticky="ew", columnspan=1, padx=(10, 10))
+
+panel_result_f2 = ttk.Frame(f2, style='My.TFrame')
+panel_result_f2.grid(row=3, column=0, sticky="ew")
+
+
+## Pie Chart ##
+f3 = ttk.Frame(main, padding=(10,10))
+mainframe = ttk.Frame(f3, width=200, height=100)
+f3.grid(column=0, row=4,sticky="news")
+mainframe.grid(column=0, row=0, columnspan=2, rowspan=3)
+
+def runPie():
+    """
+    Function to create a Pie chart graph.
+    """
+    global fig
+    createPivot(df_history_SSDH)
+        
+    fig, ax = plt.subplots(figsize=(12, 7), subplot_kw=dict(aspect="equal"))
+    
+    legends = ['Excessive Opportunity',
+                             'Not Assigned to Wells',
+                             'Deferred Disposal',
+                             'Blocked Stock']
+
+    data = pd.DataFrame([excessive_opportunity/1000000,
+                                          std_equipment/1000000,
+                                          deferred/1000000,
+                                          blocked_total/1000000
+                                          ])
+
+    explode = (0.05, 0, 0, 0)  # only "explode" the 1st slice
+    plt.rcParams['font.size'] = '13'
+    
+    
+    ax.pie(np.array(data).ravel(),
+           startangle=260, 
+           explode=explode, 
+           colors=["#ED9121", "#6D9BC3", "#696969", "#C19A6B"],
+           shadow=True,
+           autopct= lambda x: "{0:.2f}M".format(data[0].sum()/100*x)
+           )
+
+    ax.legend(legends,
+              title="Legend",
+              loc="upper left",
+              bbox_to_anchor=(1, 0, 0.1, 1),fontsize=10)
+
+    ax.set_title("Wells Excessive Stock Composition",fontsize=14)
+    ax.set_xlabel("Total Excessive Stock Value: {0:.2f}M USD".format(excessive_total/1000000 + blocked_total/1000000),fontsize=14)
+    sum_value = "{0:.2f}M".format(excessive_total/1000000)
+  
+    canvas = FigureCanvasTkAgg(fig, master=panel_result_f3)
+    canvas.get_tk_widget().grid(column=0, row=0, sticky="ew", padx=5, pady=5)
+    canvas.draw()
+    return fig
+    
+
+res_value_03 = tk.StringVar(value='')
+header_03 = tk.StringVar(value="Pie Chart")
+note_03 = ttk.Label(f3, textvariable=header_03)
+note_03.config(font=("Segoe UI", 11, 'bold'))
+note_03.grid(column=0, columnspan = 8, row=0, sticky="w", padx=5, pady=5)
+
+panel_buttons_f3 = ttk.Frame(f3)
+panel_buttons_f3.grid(row=2, column=0, sticky="ew")
+
+ttk.Button(panel_buttons_f3, text="Generate", command=runPie).grid(column=0, row=2, sticky=(W, E), padx=(10, 10))
+ttk.Button(panel_buttons_f3, text="Save Image", 
+           command=lambda:fig.savefig(f"piechart_{today}.jpeg")).grid(
+    column=1, row=2, sticky=(W, E), padx=(10, 10))
+
+panel_result_f3 = ttk.Frame(f3)
+panel_result_f3.grid(row=4, column=0, sticky="ew")
+
+res_display_03 = ttk.Label(panel_result_f3, textvariable=res_value_03)
+res_display_03.config(font=("Courier", 9))
+res_display_03.grid(column=0, row=0, sticky="ew", padx=5, pady=5)
+
+
+## Gauge Chart ##
+f4 = ttk.Frame(main, padding=(10,10))
+mainframe = ttk.Frame(f4, width=200, height=100)
+f4.grid(column=0, row=4,sticky="news")
+mainframe.grid(column=0, row=0, columnspan=2, rowspan=3)
+
+def runGauge():
+    """
+    Function to create a gauge chart (speedometer). Has some default values from the report and CUSTOM values.
+    The graph is generated in the blank HTML window, not the image as other graphs.
+    """
+    global pic
+    createPivot(df_history_SSDH)
+    
+    if kpi_var:
+        try:
+            kpi = float(kpi_var.get())
+            max_green = kpi
+        except:
+            kpi = 71
+            max_green = kpi
+
+    if max_chart_var:
+        try:
+            max_chart = float(max_chart_var.get())
+        except:
+            max_chart = 100
+    
+    if stock_value_var:
+        try:
+            stock_value = float(stock_value_var.get())
+        except:
+            stock_value = excessive_total/1000000       
+
+    max_yellow = max_chart
+    fig, ax = plt.subplots(figsize=(10, 7))
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number+delta",
+        delta = {'reference': kpi, 'decreasing': {'color': "green"}, 'increasing': {'color': "red"}, 'position': "top"},
+        value = stock_value,
+        domain = {'x': [0,1], 'y': [0,1]},
+        gauge = {
+            'axis': {'range': [None, max_chart], 'tickwidth': 1, 'tickcolor': "darkblue", 'tickmode':'linear', 'dtick': 10},
+            'bar': {'color': "#8DB600"}, 
+            'bgcolor': "white",
+            'borderwidth': 1,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, max_green], 'color': '#7FFF00'},
+                {'range': [max_green, max_yellow], 'color': 'yellow'},
+            ],
+            'threshold' : {'line': {'color': "maroon", 'width': 4}, 'thickness': 0.8, 'value': kpi}}
+            , title="TD Excessive Stock Value, mln USD"
+    ))
+
+    fig.update_layout(
+        font={'color': "black", 'family': "Arial", "size": 20},
+        xaxis={'showgrid': False, 'showticklabels':False, 'range':[-1,1]},
+        yaxis={'showgrid': False, 'showticklabels':False, 'range':[0,1]},
+        plot_bgcolor="white",
+        
+        #Aspect ratio width/height is very important, otherwise the arrow will not be set correctly. Keep untouched!
+        width=700,
+        height=410)
+
+    theta = 180 - (180 * (stock_value/max_chart)) 
+    r= 0.9
+    x_head = r * cos(radians(theta))*0.92
+    y_head = r * sin(radians(theta))*1.1
+
+    fig.add_annotation(
+        ax=0,
+        ay=0,
+        axref='x',
+        ayref='y',
+        x=x_head,
+        y=y_head,
+        xref='x',
+        yref='y',
+        showarrow=True,
+        arrowhead=1,
+        arrowsize=1,
+        arrowwidth=4,
+        startstandoff=130
+        )
+    fig.write_html("gauge_chart.html")
+    webbrowser.open("gauge_chart.html")
+   
+def resetChart():
+    kpi_input.delete(0, END)
+    max_chart_input.delete(0, END)
+    stock_value_input.delete(0, END)
+    runGauge()
+    
+res_value_04 = tk.StringVar(value='')
+header_04 = tk.StringVar(value="Gauge Chart")
+note_04 = ttk.Label(f4, textvariable=header_04)
+note_04.config(font=("Segoe UI", 11, 'bold'))
+note_04.grid(column=0, columnspan = 8, row=0, sticky="w", padx=5, pady=5)
+kpi_var = tk.StringVar()
+max_chart_var = tk.StringVar()
+stock_value_var = tk.StringVar()
+
+panel_buttons_f4 = ttk.Frame(f4)
+panel_buttons_f4.grid(row=2, column=0, sticky="ew")
+
+ttk.Button(panel_buttons_f4, text="Generate", command=runGauge).grid(column=0, row=2, sticky=(W, E), padx=(10, 10))
+
+kpi_label = ttk.Label(panel_buttons_f4, text="KPI Value:")
+kpi_label.grid(column=2, row=2, sticky="w", padx=10, pady=10)
+kpi_input = ttk.Entry(panel_buttons_f4, width=5, textvariable=kpi_var, font=("Segoe UI", 10))
+kpi_input.grid(column=3, row=2, sticky="ew", padx=10, pady=10)
+kpi_input.focus()
+
+ttk.Label(panel_buttons_f4, text="|| Custom:").grid(column=4, row=2, sticky="w")
+
+max_chart_label = ttk.Label(panel_buttons_f4, text="Max Value (mln):")
+max_chart_label.grid(column=5, row=2, sticky="w", padx=10, pady=5)
+max_chart_input = ttk.Entry(panel_buttons_f4, width=10, textvariable=max_chart_var, font=("Segoe UI", 10))
+max_chart_input.grid(column=6, row=2, sticky="w", padx=10, pady=5)
+
+ttk.Button(panel_buttons_f4, text="Reset", command=resetChart).grid(column=0, row=3, sticky=(W, E), padx=(10, 10))
+
+stock_value_label = ttk.Label(panel_buttons_f4, text="Stock Value (mln):")
+stock_value_label.grid(column=5, row=3, sticky="w", padx=10, pady=5)
+stock_value_input = ttk.Entry(panel_buttons_f4, width=10, textvariable=stock_value_var, font=("Segoe UI", 10))
+stock_value_input.grid(column=6, row=3, sticky="w", padx=10, pady=5)
+
+panel_result_f4 = ttk.Frame(f4)
+panel_result_f4.grid(row=4, column=0, sticky="ew")
+
+res_display_04 = ttk.Label(panel_result_f4, textvariable=res_value_04)
+res_display_04.config(font=("Courier", 9))
+res_display_04.grid(column=0, row=0, sticky="ew", padx=5, pady=5)
+
+
+## Bar Chart ##
+f5 = ttk.Frame(main, padding=(10,10))
+mainframe = ttk.Frame(f5, width=200, height=100)
+f5.grid(column=0, row=4,sticky="news")
+mainframe.grid(column=0, row=0, columnspan=2, rowspan=3)
+
+def getYear():
+    """
+    Drop-down list of available years.
+    """
+    global yearValue
+    yearValue = year_select.get()
+    return yearValue
+
+def runBar():
+    """
+    Function to create a Bar Chart.
+    """
+    global fig, df_kpi
+    getYear()
+    query_kpi = f'''
+    SELECT Ex.Year,
+    Ex.[End of Month] as 'Month',
+    Ex.[Stock Value],
+    Ex.[Excessive Value],
+    Ex.[% of Excessive Stock]
+    FROM *****'''
+
+    kpi_query = pd.read_sql_query(query_kpi, conn)
+    kpi_query = pd.DataFrame(kpi_query)
+    df_kpi = kpi_query
+    year=kpi_query['Year'][0]
+    df_kpi['Stock Value'] = round((df_kpi['Stock Value']/1000000),2)
+    df_kpi['Excessive Value'] = round((df_kpi['Excessive Value']/1000000),2)
+    
+    fig, ax = plt.subplots(figsize=(10, 7))
+    plt.rcParams.update({'font.size': 10})
+    ax.bar(df_kpi['Month'], df_kpi['Stock Value'])
+    ax.bar(df_kpi['Month'], df_kpi['Excessive Value'])
+    ax.set_ylabel('Value, mln USD',fontsize=11)
+    ax.set_xlabel('',fontsize=10)
+    ax.set_title(f'{year} Historical TDW Excessive Stock',fontsize=15)
+    
+    xlocs, xlabs = plt.xticks()
+    plt.xticks(rotation=45,fontsize=10)
+    plt.yticks(fontsize=10)
+    
+    for i, v in enumerate(df_kpi['Stock Value']):
+        plt.text(xlocs[i]-0.43, v + 0.7, str(v))
+
+    for j, s in enumerate(df_kpi['Excessive Value']):
+        plt.text(xlocs[j]-0.23, s+ 0.7, str(s))
+    
+    ax.legend(loc="lower left")
+        
+    canvas = FigureCanvasTkAgg(fig, master=panel_result_f5)
+    canvas.draw() 
+    canvas.get_tk_widget().grid(column=0, row=0, sticky="ew", padx=5, pady=5)
+
+    return fig
+
+
+cur_year = str(date.today().year)
+year_select = tk.StringVar()
+year_select.set(cur_year)
+OPTIONS = ['2021', '2022','2023','2024','2025','2026','2027','2028','2029','2030']
+res_value_05 = tk.StringVar(value='')
+header_05 = tk.StringVar(value="Bar Chart")
+note_05 = ttk.Label(f5, textvariable=header_05)
+note_05.config(font=("Segoe UI", 11, 'bold'))
+note_05.grid(column=0, columnspan = 8, row=0, sticky="w", padx=5, pady=5)
+
+panel_buttons_f5 = ttk.Frame(f5)
+panel_buttons_f5.grid(row=2, column=0, sticky="ew")
+
+ttk.Button(panel_buttons_f5, text="Generate", command=runBar).grid(column=0, row=2, sticky=(W, E), padx=(10, 10))
+
+ttk.Label(panel_buttons_f5, text="Select Year:").grid(column=1, row=2, sticky=W, padx=(20, 20))
+year_dropdown = ttk.OptionMenu(panel_buttons_f5, year_select, *OPTIONS)
+year_dropdown.grid(column=3, row=2, sticky=(W, E), padx=(20, 20))
+year_dropdown.focus()
+
+ttk.Button(panel_buttons_f5, text="Save Image", 
+           command=lambda:fig.savefig(f"barchart_{today}.jpeg")).grid(
+    column=4, row=2, sticky=(W, E), padx=(10, 10))
+
+panel_result_f5 = ttk.Frame(f5)
+panel_result_f5.grid(row=4, column=0, sticky="ew")
+
+res_display_05 = ttk.Label(panel_result_f5, textvariable=res_value_05)
+res_display_05.config(font=("Courier", 9))
+res_display_05.grid(column=0, row=0, sticky="ew", padx=5, pady=5)
+
+
+## Guide Page ##
+f99 = ttk.Frame(main, padding=(10,10))
+mainframe = ttk.Frame(f99, width=200, height=100)
+f99.grid(column=0, row=4,sticky="news")
+mainframe.grid(column=0, row=0, columnspan=2, rowspan=3)
+ 
+header_99 = tk.StringVar(value="How to Use")
+note_99 = ttk.Label(f99, textvariable=header_99)
+note_99.config(font=("Segoe UI", 11, 'bold'))
+note_99.grid(column=0, columnspan = 8, row=0, sticky="w", padx=5, pady=5)
+
+note_guide = tk.StringVar(value='''
+Начните со страницы Start Page - там выгружается главный отчет, на основе которого работают графики.
+
+После этого можно выгрузить таблицу показателей Values Table для презентации, и диаграммы.
+Таблица Values Table позволяет вам сравнить текущий с любым месяцем, который имеется в архиве.
+Indicators показывают, как основной месяц отличается от месяца, с которым сравниваем.
+
+Диаграмма Gauge Chart по умолчанию показывает шкалу до 100 млн, KPI=88.5 млн и фактическое значение стока. 
+Значения можно задать вручную. KPI показан бордовой линией и разграничивает "зеленую" и "желтую" зоны.
+
+Диаграмма Bar Chart  с остальными отчетами не связана, ее можно открыть и отдельно.
+
+Кнопка Save Image сохраняет скриншот диаграммы в ту директорию, где у вас лежит программа.
+Также, Gauge Chart создает временный файл gauge_chart.jpeg, без которого не обойтись, к сожалению.
+Его можно не удалять, программа его перезаписывает каждый раз.
+''')
+
+panel_buttons_f99 = ttk.Frame(f99)
+panel_buttons_f99.grid(row=2, column=0, sticky="ew")
+
+note_label = ttk.Label(panel_buttons_f99, textvariable=note_guide)
+note_label.config(font=("Segoe UI", 9))
+note_label.grid(column=0, columnspan = 6, row=0, sticky="w", padx=5, pady=5)
+
+def on_closing():
+    if messagebox.askokcancel("Quit and Close SQL Server", "Do you want to quit?"):
+        conn.close()
+        root.destroy()
+
+root.protocol("WM_DELETE_WINDOW", on_closing)
+
+root.mainloop()
