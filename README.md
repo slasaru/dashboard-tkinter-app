@@ -15,3 +15,6 @@ HOW TO USE:
 - Navigate using top buttons;
 - Bar Chart uses a separate file so can be run without creating a main file on the start page;
 - You can save data in appropriate format (though gauge chart generates a separate window from where you can copy using Plotly interface buttons).
+
+THE APP SCREENSHOT:
+- Shows the main file generated: https://github.com/slasaru/dashboard-tkinter-app-/blob/main/dashboard_screenshot.JPG
