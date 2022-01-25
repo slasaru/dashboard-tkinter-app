@@ -1,4 +1,4 @@
-# dashboard-tkinter-app-
+# dashboard-tkinter-app
 dashboard app using tkinter GUI
 
 NOTE: SQL queries text is hidden to avoid potential confidential info disclose.
